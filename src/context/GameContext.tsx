@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
@@ -35,7 +34,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     }
     return null;
   });
-  
+
   const [playerId, setPlayerIdState] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem(PLAYER_ID_KEY);
@@ -53,9 +52,9 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     }
     setGameIdState(id);
   };
-  
+
   const setPlayerId = (id: string | null) => {
-     if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined') {
       if (id) {
         localStorage.setItem(PLAYER_ID_KEY, id);
       } else {
@@ -64,74 +63,95 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     }
     setPlayerIdState(id);
   };
-  
+
   // Effect for listening to game changes from Firestore
   useEffect(() => {
     const lobbyIdFromUrl = pathname.startsWith('/lobby/') ? pathname.split('/')[2] : null;
     if (lobbyIdFromUrl && lobbyIdFromUrl !== gameId) {
-        setGameId(lobbyIdFromUrl);
-        return; 
+      setGameId(lobbyIdFromUrl);
+      return;
     }
 
     if (!gameId) {
-      if(game) setGame(null);
+      if (game) setGame(null);
       return;
-    };
+    }
 
     const gameRef = doc(db, 'games', gameId);
-    const unsubscribe = onSnapshot(gameRef, (snapshot) => {
-      const gameData = snapshot.data() as Game | undefined;
-      if (gameData) {
-        setGame(gameData);
-        if (playerId && gameData.players[playerId] && !gameData.players[playerId].online) {
+    const unsubscribe = onSnapshot(
+      gameRef,
+      (snapshot) => {
+        const gameData = snapshot.data() as Game | undefined;
+        if (gameData) {
+          setGame(gameData);
+          if (playerId && gameData.players[playerId] && !gameData.players[playerId].online) {
             updateDoc(gameRef, { [`players.${playerId}.online`]: true });
-        }
-      } else {
-        setGame(null);
-        setPlayer(null);
-        if (gameId) setGameId(null);
-        if (playerId) setPlayerId(null);
-        if (pathname !== '/') {
+          }
+        } else {
+          setGame(null);
+          setPlayer(null);
+          if (gameId) setGameId(null);
+          if (playerId) setPlayerId(null);
+          if (pathname !== '/') {
             router.replace('/');
+          }
         }
-      }
-    }, (error) => {
-        console.error("Error listening to game document:", error);
+      },
+      (error) => {
+        console.error('Error listening to game document:', error);
         setGame(null);
         setPlayer(null);
         setGameId(null);
         setPlayerId(null);
         router.replace('/');
-    });
+      }
+    );
 
     return () => unsubscribe();
-  }, [gameId]); 
-  
+  }, [gameId, pathname, playerId, router]);
+
   // Effect for handling navigation based on game state
   useEffect(() => {
     if (!game || !gameId) {
-      const isGamePage = ['/lobby', '/categories', '/game', '/results', '/validation'].some(p => pathname.startsWith(p));
-      if (isGamePage) {
+      // Permite acesso à rota de convite /lobby/[id] mesmo sem game ou player
+      const allowedPaths = ['/lobby/'];
+      const protectedPaths = ['/categories', '/game', '/results', '/validation'];
+
+      const isAllowedPath = allowedPaths.some((path) => pathname.startsWith(path));
+      const isProtectedPath = protectedPaths.some((path) => pathname.startsWith(path));
+
+      if (isProtectedPath && !isAllowedPath) {
         router.replace('/');
       }
       return;
     }
 
     let targetPath = '';
-    switch(game.state) {
-        case 'LOBBY': targetPath = `/lobby/${gameId}`; break;
-        case 'CATEGORIES': targetPath = '/categories'; break;
-        case 'GAME': targetPath = '/game'; break;
-        case 'VALIDATION': targetPath = '/validation'; break;
-        case 'RESULTS': targetPath = '/results'; break;
-        default: targetPath = '/'; break;
+    switch (game.state) {
+      case 'LOBBY':
+        targetPath = `/lobby/${gameId}`;
+        break;
+      case 'CATEGORIES':
+        targetPath = '/categories';
+        break;
+      case 'GAME':
+        targetPath = '/game';
+        break;
+      case 'VALIDATION':
+        targetPath = '/validation';
+        break;
+      case 'RESULTS':
+        targetPath = '/results';
+        break;
+      default:
+        targetPath = '/';
+        break;
     }
-    
-    if (pathname !== targetPath) {
-        router.replace(targetPath);
-    }
-  }, [game, gameId, pathname]);
 
+    if (pathname !== targetPath) {
+      router.replace(targetPath);
+    }
+  }, [game, gameId, pathname, router]);
 
   // Effect to derive the current player from the game object
   useEffect(() => {
@@ -153,13 +173,12 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
         });
       }
     };
-    
+
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [gameId, playerId]);
-
 
   return (
     <GameContext.Provider
